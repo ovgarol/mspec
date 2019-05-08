@@ -1,0 +1,4 @@
+instances:
+  hzg_mspec:
+    long_name: mspec
+    model: hzg/mspec
