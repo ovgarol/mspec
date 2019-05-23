@@ -19,7 +19,7 @@ add_library(fabm_models_hzg OBJECT
             maecs/maecs_primprod.F90
             dependencies/dependencies.F90
             #kristineb/kristineb_gen.F90
-            mspec/mspec_gen.F90
+            mspec/mspec.F90
            )
 
 add_dependencies(fabm_models_hzg fabm_base)

@@ -103,7 +103,7 @@ subroutine dummy_grazing(self,Phy,grazing)
   real(rk),dimension(self%phyto_num),intent(in) :: Phy ! Phytoplankton biomass concentration, mmol-C m^-3
   real(rk),dimension(self%phyto_num),intent(out) :: grazing ! Grazing forcing, mmol-C m^-3 d^-1
 
-  grazing = 0.040_rk*Phy**2
+  grazing = 0.04_rk*Phy**2
 
   return
 end subroutine dummy_grazing

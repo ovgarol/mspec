@@ -665,7 +665,8 @@ subroutine do(self, _ARGUMENTS_DO_)
   real(rk) :: csr,csrA,csrW
   real(rk), dimension(self%zoo_num) :: Lz_tmp
 
-  par = self%par
+  !! Setting default values for forcings
+  !par = self%par
   T_forcing(:) = 1.0_rk
   f_co2(:) = 1.0_rk
   F_par(:) = 1.0_rk
@@ -683,6 +684,7 @@ subroutine do(self, _ARGUMENTS_DO_)
 
   !! Zooplankton Preferences
   _GET_GLOBAL_ (self%id_doy,doy) !Get day of year
+
   !! First day of Experiment (8.3.2013) was the 67th day of the year
   csrA = 0.5
   csrW = 0.2
@@ -718,6 +720,7 @@ subroutine do(self, _ARGUMENTS_DO_)
     _GET_(self%id_Q_N(ib),Q_N(ib))
     _GET_(self%id_Q_P(ib),Q_P(ib))
   end do
+
   _GET_(self%id_D_P,D_P)
   _GET_(self%id_D_N,D_N)
   _GET_(self%id_N,N)
@@ -753,64 +756,73 @@ subroutine do(self, _ARGUMENTS_DO_)
   if(self%PAR_forc .eqv. .true.) call f_parsr(self,Phy,Q_N,f_co2,T_forcing,par,mixl,F_par)
   !!--------------------------
 
-     ! Aggregation rate
-     call aggr_rate(self,Phy,Q_N,D_N,aggr)
-     ! Phytoplankton growth rate
-     call Phy_growth_rate(self,Q_N,Q_P,T_forcing,f_co2,F_par,P_growth_rate)
-     ! Nutrient uptake rate by phytoplankton
-     call N_uptake(self,N,Q_N,T_forcing,par,uptake_rate_N)
-     call P_uptake(self,P,Q_P,T_forcing,par,uptake_rate_P)
-     ! Phytoplankton respiration
-     call Respiration(self,uptake_rate_N,R_N)
-     ! Community mean cell size
-     call mean_cell_size(self,Phy,Mean)
+  !! Aggregation rate
+  call aggr_rate(self,Phy,Q_N,D_N,aggr)
 
-     ! Grazing forcing
-     if (self%graz_forc .eqv. .true.) then
-       call grazing_forcing(self,Phy,T_forcing,Mean,zoo_pref,cop_pref,Zoo,grazing_forc,Lz_tmp,I_max)
-     else
-       call dummy_grazing(self,Phy,grazing_forc)
-     endif
+  !! Phytoplankton growth rate
+  call Phy_growth_rate(self,Q_N,Q_P,T_forcing,f_co2,F_par,P_growth_rate)
 
-     ! Sinking rate
-     call sink_rate(self,Q_N,Q_P,mixl,sinkr)
-     ! Phytoplankton relative growth rate
-     call Rel_growth_rate_sr(self,Phy,aggr,P_growth_rate,grazing_forc,R_N,sinkr,rel_growthr)
-     !--- Differential equations ---
-    	do ib=1,self%phyto_num
-        dPhy_dt(ib) = rel_growthr(ib) * Phy(ib)
-        !if(self%log_ESD(ib)<1.6) dPhy_dt(ib)=dPhy_dt(ib)-0.04*Phy(ib)
-        dQ_N_dt(ib) = uptake_rate_N(ib) - (P_growth_rate(ib)-R_N(ib)) * Q_N(ib)
-        dQ_P_dt(ib) = uptake_rate_P(ib) - (P_growth_rate(ib)-R_N(ib)) * Q_P(ib)
-    	end do
-      !Heterotrophe Flagellaten
-      !dPhy_dt(6)=Phy(6)*(grazing_forc(1)+grazing_forc(2)+grazing_forc(3)+grazing_forc(4)+grazing_forc(5))/3.0+ dPhy_dt(6)*2/3.0
-      dN_dt_t = dN_dt(self,uptake_rate_N, Phy, D_N,grazing_forc,Q_N,T_forcing,N)
-      dP_dt_t = dP_dt(self,uptake_rate_P, Phy, D_P,grazing_forc,Q_P,T_forcing,P)
-      dD_N_dt_t = dD_N_dt(self, Phy, Q_N, D_N,aggr,T_forcing,mixl,grazing_forc)
-      dD_P_dt_t = dD_P_dt(self, Phy, Q_P, D_P,aggr,T_forcing,mixl,grazing_forc)
-      !if(isnan(Phy(1))) stop
-      !-------------------------
-      ! Send rates of change to FABM.
-      do ib=1,self%phyto_num
-       _SET_ODE_(self%id_Phy(ib),dPhy_dt(ib)/secs_pr_day)
-       _SET_ODE_(self%id_Q_N(ib),dQ_N_dt(ib)/secs_pr_day)
-       _SET_ODE_(self%id_Q_P(ib),dQ_P_dt(ib)/secs_pr_day)
-     end do
-     _SET_ODE_(self%id_D_P,dD_P_dt_t/secs_pr_day)
-     _SET_ODE_(self%id_D_N,dD_N_dt_t/secs_pr_day)
-     _SET_ODE_(self%id_N,dN_dt_t/secs_pr_day)
-     _SET_ODE_(self%id_P,dP_dt_t/secs_pr_day)
+  !! Nutrient uptake rate by phytoplankton
+  call N_uptake(self,N,Q_N,T_forcing,par,uptake_rate_N)
+  call P_uptake(self,P,Q_P,T_forcing,par,uptake_rate_P)
 
+  !! Phytoplankton respiration
+  call Respiration(self,uptake_rate_N,R_N)
 
-     ! Send the value of diagnostic variables to FABM.
-     _SET_DIAGNOSTIC_(self%id_chl_a,chl_a(self,Phy,Q_N,par))
-     _SET_DIAGNOSTIC_(self%id_POC,self%POC_initial+sum(Phy(:))) !TODO
-     _SET_DIAGNOSTIC_(self%id_PON,sum(Q_N(:))+D_N)		!TODO
-     _SET_DIAGNOSTIC_(self%id_mean_cell_size,Mean)
-     _SET_DIAGNOSTIC_(self%id_size_diversity,size_diversity(self,Phy,Mean))
-     do ib=1,self%phyto_num
-       _SET_DIAGNOSTIC_(self%id_fPAR(ib),F_par(ib))
+  !! Community mean cell size
+  call mean_cell_size(self,Phy,Mean)
+
+  !! Grazing forcing
+  if (self%graz_forc .eqv. .true.) then
+   call grazing_forcing(self,Phy,T_forcing,Mean,zoo_pref,cop_pref,Zoo,grazing_forc,Lz_tmp,I_max)
+  else
+    call dummy_grazing(self,Phy,grazing_forc)
+  endif
+
+  !! Sinking rate
+  call sink_rate(self,Q_N,Q_P,mixl,sinkr)
+
+  !! Phytoplankton relative growth rate
+  call Rel_growth_rate_sr(self,Phy,aggr,P_growth_rate,grazing_forc,R_N,sinkr,rel_growthr)
+
+  !! Differential equations ----------------------------------------------------
+  do ib=1,self%phyto_num
+    dPhy_dt(ib) = rel_growthr(ib) * Phy(ib)
+    !if(self%log_ESD(ib)<1.6) dPhy_dt(ib)=dPhy_dt(ib)-0.04*Phy(ib)
+    dQ_N_dt(ib) = uptake_rate_N(ib) - (P_growth_rate(ib)-R_N(ib)) * Q_N(ib)
+    dQ_P_dt(ib) = uptake_rate_P(ib) - (P_growth_rate(ib)-R_N(ib)) * Q_P(ib)
+  end do
+
+  !Heterotrophe Flagellaten
+  !dPhy_dt(6)=Phy(6)*(grazing_forc(1)+grazing_forc(2)+grazing_forc(3)+grazing_forc(4)+grazing_forc(5))/3.0+ dPhy_dt(6)*2/3.0
+  dN_dt_t = dN_dt(self,uptake_rate_N, Phy, D_N,grazing_forc,Q_N,T_forcing,N)
+  dP_dt_t = dP_dt(self,uptake_rate_P, Phy, D_P,grazing_forc,Q_P,T_forcing,P)
+  dD_N_dt_t = dD_N_dt(self, Phy, Q_N, D_N,aggr,T_forcing,mixl,grazing_forc)
+  dD_P_dt_t = dD_P_dt(self, Phy, Q_P, D_P,aggr,T_forcing,mixl,grazing_forc)
+  !if(isnan(Phy(1))) stop
+  !-------------------------
+
+  !! Send rates of change to FABM.
+  do ib=1,self%phyto_num
+    _SET_ODE_(self%id_Phy(ib),dPhy_dt(ib)/secs_pr_day)
+    _SET_ODE_(self%id_Q_N(ib),dQ_N_dt(ib)/secs_pr_day)
+    _SET_ODE_(self%id_Q_P(ib),dQ_P_dt(ib)/secs_pr_day)
+  end do
+
+  _SET_ODE_(self%id_D_P,dD_P_dt_t/secs_pr_day)
+  _SET_ODE_(self%id_D_N,dD_N_dt_t/secs_pr_day)
+  _SET_ODE_(self%id_N,dN_dt_t/secs_pr_day)
+  _SET_ODE_(self%id_P,dP_dt_t/secs_pr_day)
+
+  !! Send the value of diagnostic variables to FABM.
+  _SET_DIAGNOSTIC_(self%id_chl_a,chl_a(self,Phy,Q_N,par))
+  _SET_DIAGNOSTIC_(self%id_POC,self%POC_initial+sum(Phy(:))) !TODO
+  _SET_DIAGNOSTIC_(self%id_PON,sum(Q_N(:))+D_N)		!TODO
+  _SET_DIAGNOSTIC_(self%id_mean_cell_size,Mean)
+  _SET_DIAGNOSTIC_(self%id_size_diversity,size_diversity(self,Phy,Mean))
+
+  do ib=1,self%phyto_num
+    _SET_DIAGNOSTIC_(self%id_fPAR(ib),F_par(ib))
      !end do
      !do ib=1,self%phyto_num
        _SET_DIAGNOSTIC_(self%id_fCO2(ib),f_co2(ib))
