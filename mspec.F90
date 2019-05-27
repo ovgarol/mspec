@@ -695,10 +695,20 @@ subroutine do(self, _ARGUMENTS_DO_)
   ! close(100)
 
   !! Forcings------------------------------------------
+  if(self%T_forc .eqv. .true.) then
+    _GET_(self%id_DeepWTemp,deepwTemp)
+  end if
 
-  _GET_GLOBAL_ (self%id_doy,doy) !Get day of year
+  if(self%co2_forc .eqv. .true.) then
+    _GET_HORIZONTAL_(self%id_pCO2,pCO2)
+  end if
+
+  if(self%PAR_forc .eqv. .true.) then
+    _GET_(self%id_PAR,par) !! get PAR from file
+  end if
 
   !! First day of Experiment (8.3.2013) was the 67th day of the year
+  _GET_GLOBAL_ (self%id_doy,doy) !Get day of year
   csrA = 0.5
   csrW = 0.2
   csr = (1._rk-csrA)+csrA*(1.0_rk/(1.0_rk+exp(csrW*(dble(doy-67-50)))))
@@ -759,22 +769,10 @@ subroutine do(self, _ARGUMENTS_DO_)
   _GET_(self%id_N,N)
   _GET_(self%id_P,P)
 
-
   !! Declaring if forcing would be calculated, if not returns the values declared as default.
-  if(self%T_forc .eqv. .true.) then
-    _GET_(self%id_DeepWTemp,deepwTemp)
-    call F_T(self,deepwTemp,T_forcing)
-  end if
-
-  if(self%co2_forc .eqv. .true.) then
-    _GET_HORIZONTAL_(self%id_pCO2,pCO2)
-    call F_Co2sr(self,pCO2,f_co2)
-  end if
-
-  if(self%PAR_forc .eqv. .true.) then
-    _GET_(self%id_PAR,par) !! get PAR from file
-    call f_parsr(self,Phy,Q_N,f_co2,T_forcing,par,mixl,F_par)
-  end if
+  if(self%T_forc .eqv. .true.) call F_T(self,deepwTemp,T_forcing)
+  if(self%co2_forc .eqv. .true.) call F_Co2sr(self,pCO2,f_co2)
+  if(self%PAR_forc .eqv. .true.) call f_parsr(self,Phy,Q_N,f_co2,T_forcing,par,mixl,F_par)
   !!--------------------------
 
   !! Aggregation rate
