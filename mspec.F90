@@ -20,13 +20,13 @@ module hzg_mspec
 
   !!  HZG model types
   type type_mspec_var
-    real(rk) :: Phy,N,P,Q_N,Q_P,D_N,D_P !state variables
+    real(rk) :: Phy,N,P,Q_N,Q_P,D_N,D_P!,Z !state variables !!new
     real(rk) :: Cop,SeaTemp,DeepWtemp,pCO2,cil_h,cil_l,copepod_l,copepod_h !Forcings
   end type
 
   type type_mspec_rhs
-    !OG Are these definitions are really needed???
-    !real(rk) :: Phy,N,P,Q_N,Q_P,D_N,D_P
+    !! OG Are these definitions (line below) definitions are really needed???
+    real(rk) :: Phy,N,P,Q_N,Q_P,D_N,D_P
   end type
 
   !! Standard fabm model types
@@ -34,6 +34,7 @@ module hzg_mspec
     type(type_global_dependency_id) :: id_doy
     type(type_state_variable_id),dimension(numberofphytos) :: id_Phy,id_Q_N,id_Q_P
     type(type_state_variable_id) :: id_D_N,id_D_P,id_N,id_P
+    type(type_state_variable_id),dimension(numberofzoos)::id_Z !!new
     type(type_dependency_id) :: id_PAR ! PAR_Forcing
     type(type_dependency_id) :: id_DeepWTemp !
     type(type_horizontal_dependency_id) :: id_pCO2, id_SeaTemp !id_CO2_high
@@ -43,6 +44,7 @@ module hzg_mspec
     type(type_diagnostic_variable_id) :: id_chl_a,id_mean_cell_size,id_size_diversity,id_FTPhy,id_FTZoo,id_POC,id_PON
     type(type_diagnostic_variable_id),dimension(numberofphytos) :: id_fPAR,id_fCO2,id_grazing,id_uptake_N,id_uptake_P,id_growth,id_sizespec
     type(type_diagnostic_variable_id),dimension(numberofzoos) :: id_I_max
+
     !Initial Values
     type(type_diagnostic_variable_id) :: id_total_growth, id_total_respiration,id_total_sinking,id_aggregation,id_total_grazing
     real(rk),dimension(numberofphytos) ::  Q_N_initial, Q_P_initial,Phy_initial
@@ -336,7 +338,7 @@ module hzg_mspec
     A_star_opt = 0.01_rk ! m3 mmol-N^-1 d^-1
     R_A	 = 3.0_rk ! -
     tot_phyc0 = 0.6_rk 	 !mmole-C m^-3
-    log_ESD = 0.0 !(/0.5,1.0,1.3,1.6,1.9,2.2,2.5,3.,3.5,4.,4.5,5.,5.5/)
+    log_ESD = (/-0.5,0.0,0.5,1.0,1.3,1.6,1.9,2.2,2.5,3.,3.5,4.0,4.5,5.,5.5,6.0,6.2/)
     log_ESD_crit = 0.35_rk
 
     SwitchOn = .false.
@@ -432,9 +434,7 @@ module hzg_mspec
      !Calculate the initial Phytoplankton conentration
     pars = 0.0_rk
     call ecophys_para(self,pars)
-    !allocate(phy_inital(numberofphytos),stat=rc) !OG
-    !if(rc /= 0) stop !OG
-    !  call !OG
+
     do ib=1,size(pars)
       call self%get_parameter(self%pars(ib), 'pars'//trim(int2char(ib)), default=pars(ib))
       !Write(*,*)'pars'//trim(int2char(ib)),self%pars(ib)
@@ -444,19 +444,25 @@ module hzg_mspec
     !TODO: Why, explain!?
 
     do ib=1,phyto_num
-      Phyto0=1.0!exp(-((log_ESD(ib)-Phyto0_mean)**2)/(2*(Phyto0_sigma)**2))+exp(-((log_ESD(ib)-3.5)**2)/(2*(0.8)**2))*0.03
-      !Phyto0(ib)=exp(-((log_ESD(ib)-2)**2)/(2*(exp(Phyto0_sigma))**2))!+exp(-((log_ESD(ib)-3.5)**2)/(2*(0.8)**2))*0.03
+      Phyto0=1.0
+      !Phyto0(ib)=exp(-((log_ESD(ib)-Phyto0_mean)**2)/(2*(Phyto0_sigma)**2))+exp(-((log_ESD(ib)-3.5)**2)/(2*(0.8)**2))*0.03
+      !Phyto0(ib)=0.50_rk*exp(-0.1_rk*(log_ESD(ib)-5.2_rk)**2.0_rk)+0.25_rk*exp(-0.1_rk*(log_ESD(ib)-3.5_rk)**2.0_rk)
     end do
 
     Phy_initial = tot_phyc0*Phyto0/sum(Phyto0)
 
-     write(*,*) Phy_initial(1)
+    !!write(*,*) Phy_initial(1)
 
     do ib=1,phyto_num
       call bgc_parameters(self,log_ESD(ib),tmp)
       Q_N_initial(ib) = tmp(3)
       Q_P_initial(ib) = tmp(8)
     end do
+
+    !Q_N_initial = self%QN_max
+    !Q_P_initial = self%QP_max
+
+    write(*,*) Q_N_initial
 
     do ib=1,phyto_num
       call self%get_parameter(self%Phy_initial(ib) ,'Phy_initial'//trim(int2char(ib)), default=Phy_initial(ib))
@@ -625,8 +631,7 @@ module hzg_mspec
     call self%register_dependency(self%id_copepod_h,type_bulk_standard_variable('copepod_h','-'))
 
     call make_phyto_allometries(self) !OG
-    ! extra line included from parser var init_incl
-    !#define UNIT *1.1574074074E-5_rk
+
 
     return
 
@@ -647,235 +652,240 @@ module hzg_mspec
 !!----------------------------------------------------------------------
 !! Add model subroutines here.
 
-subroutine do(self, _ARGUMENTS_DO_)
-  class (type_hzg_mspec),intent(in) :: self
+  subroutine do(self, _ARGUMENTS_DO_)
+    class (type_hzg_mspec),intent(in) :: self
 
-  _DECLARE_ARGUMENTS_DO_
-  integer :: ib,jb,cb,doy ! integer counters
+    _DECLARE_ARGUMENTS_DO_
+    integer :: ib,jb,cb,doy,old_doy=0 ! generic integer counters
 
-  !! State variables
-  real(rk),dimension(self%phyto_num) :: Phy,Q_N,Q_P,log_ESD
-  real(rk),dimension(self%zoo_num) :: Zoo
-  real(rk) :: D_N,D_P,N,P
+    !! State variables
+    real(rk),dimension(self%phyto_num) :: Phy,Q_N,Q_P,log_ESD
+    real(rk),dimension(self%zoo_num) :: Zoo
+    real(rk) :: D_N,D_P,N,P
 
-  !! Temporal parameters
-  real(rk),dimension(self%phyto_num) :: uptake_rate_N,P_growth_rate,uptake_rate_P,R_N,grazing_forc,sinkr,rel_growthr
-  real(rk),dimension(self%phyto_num) :: dPhy_dt,dQ_N_dt,dQ_P_dt,growth
-  real(rk),dimension(self%zoo_num) :: I_max
-  real(rk) :: dP_dt_t,dN_dt_t,dD_P_dt_t,dD_N_dt_t
-  real(rk) :: mean, aggr
+    !! Temporal parameters
+    real(rk),dimension(self%phyto_num) :: uptake_rate_N,P_growth_rate,uptake_rate_P,R_N,grazing_forc,sinkr,rel_growthr
+    real(rk),dimension(self%phyto_num) :: dPhy_dt,dQ_N_dt,dQ_P_dt,growth
+    real(rk),dimension(self%zoo_num) :: I_max
+    real(rk) :: dP_dt_t,dN_dt_t,dD_P_dt_t,dD_N_dt_t
+    real(rk) :: mean, aggr
 
-  !! Forcings
-  real(rk),dimension(self%phyto_num) :: f_co2, F_par
-  real(rk),dimension(2) :: T_forcing
-  real(rk) :: par,deepwTemp,pCO2!,SeaTemp !TODO:?
-  real(rk),dimension(self%zoo_num,self%phyto_num) :: zoo_pref
-  real(rk),dimension(self%num_ciliat) :: cop_pref
-  real(rk) :: cil_l,copepod_l,cil_h,copepod_h
-  !real(rk),dimension(11) :: test
-  real(rk) :: mixl ! mixed layer depth
-  real(rk) :: csr,csrA,csrW
-  real(rk), dimension(self%zoo_num) :: Lz_tmp
+    !! Forcings
+    real(rk),dimension(self%phyto_num) :: f_co2, F_par
+    real(rk),dimension(2) :: T_forcing
+    real(rk) :: par,deepwTemp,pCO2!,SeaTemp !TODO:?
+    real(rk),dimension(self%zoo_num,self%phyto_num) :: zoo_pref
+    real(rk),dimension(self%num_ciliat) :: cop_pref
+    real(rk) :: cil_l,copepod_l,cil_h,copepod_h
+    !real(rk),dimension(11) :: test
+    real(rk) :: mixl ! mixed layer depth
+    real(rk) :: csr,csrA,csrW
+    real(rk), dimension(self%zoo_num) :: Lz_tmp
 
-  !! Setting default values for forcings ---------------------------------------
-  T_forcing(:) = 1.0_rk
-  f_co2(:) = 1.0_rk
-  F_par(:) = 1.0_rk
-  grazing_forc(:) = 0.0_rk
-  !!----------------------------------------------------------------------------
+    real(rk),dimension(self%phyto_num) :: rdn ! random
+    integer :: i ! random
 
-  !! This part controls zoo grazing forcing in kristineberg experiments---------
+    !! Setting default values for forcings ---------------------------------------
+    T_forcing(:) = 1.0_rk
+    f_co2(:) = 1.0_rk
+    F_par(:) = 1.0_rk
+    grazing_forc(:) = 0.0_rk
+    !!----------------------------------------------------------------------------
 
-  ! open(100,file='test.txt',status='new')
-  ! do ib=1,self%phyto_num
-  !   call bgc_parameters(self,self%log_ESD(ib), test)
-  !   write(100,*)self%log_ESD(ib),test
-  !   write(100,*)''
-  ! end do
-  ! close(100)
+    !! This part controls zoo grazing forcing in kristineberg experiments---------
 
-  !! Forcings------------------------------------------
-  if(self%T_forc .eqv. .true.) then
-    _GET_(self%id_DeepWTemp,deepwTemp)
-  end if
+    ! open(100,file='test.txt',status='new')
+    ! do ib=1,self%phyto_num
+    !   call bgc_parameters(self,self%log_ESD(ib), test)
+    !   write(100,*)self%log_ESD(ib),test
+    !   write(100,*)''
+    ! end do
+    ! close(100)
 
-  if(self%co2_forc .eqv. .true.) then
-    _GET_HORIZONTAL_(self%id_pCO2,pCO2)
-  end if
+    !! Forcings------------------------------------------
+    if(self%T_forc .eqv. .true.) then
+      _GET_(self%id_DeepWTemp,deepwTemp)
+    end if
 
-  if(self%PAR_forc .eqv. .true.) then
-    _GET_(self%id_PAR,par) !! get PAR from file
-  end if
+    if(self%co2_forc .eqv. .true.) then
+      _GET_HORIZONTAL_(self%id_pCO2,pCO2)
+    end if
 
-  !! First day of Experiment (8.3.2013) was the 67th day of the year
-  _GET_GLOBAL_ (self%id_doy,doy) !Get day of year
-  csrA = 0.5
-  csrW = 0.2
-  csr = (1._rk-csrA)+csrA*(1.0_rk/(1.0_rk+exp(csrW*(dble(doy-67-50)))))
-  mixl = self%z*csr
+    if(self%PAR_forc .eqv. .true.) then
+      _GET_(self%id_PAR,par) !! get PAR from file
+    end if
 
-  if(self%graz_forc .eqv. .true.) then
-    !! Zooplankton Preferences
-    csrA = 0.25
+    !! First day of Experiment (8.3.2013) was the 67th day of the year
+    _GET_GLOBAL_ (self%id_doy,doy) !Get day of year
+
+    csrA = 0.5
     csrW = 0.2
     csr = (1._rk-csrA)+csrA*(1.0_rk/(1.0_rk+exp(csrW*(dble(doy-67-50)))))
-    Lz_tmp = (/self%Lz(1),self%Lz(2),self%Lz(3)*csr/)
-    zoo_pref = 0.0_rk
-    cop_pref = 0.0_rk
+    mixl = self%z*csr
 
-    do jb=1,self%zoo_num
-      do ib=1,self%phyto_num
-        zoo_pref(jb,ib)=exp(-self%sel(jb)*(self%Lz_star(jb)-self%log_ESD(ib))**2)
+    if(self%graz_forc .eqv. .true.) then
+      !! Zooplankton Preferences
+      csrA = 0.25
+      csrW = 0.2
+      csr = (1._rk-csrA)+csrA*(1.0_rk/(1.0_rk+exp(csrW*(dble(doy-67-50)))))
+      Lz_tmp = (/self%Lz(1),self%Lz(2),self%Lz(3)*csr/)
+      zoo_pref = 0.0_rk
+      cop_pref = 0.0_rk
+
+      do jb=1,self%zoo_num
+        do ib=1,self%phyto_num
+          zoo_pref(jb,ib)=exp(-self%sel(jb)*(self%Lz_star(jb)-self%log_ESD(ib))**2)
+        end do
       end do
-    end do
-    !! Copepod preference for ciliates
-    !! Ciliates are divided to two size class:small:3 mum logeESD, large:4.5 mum logeESD
-    do cb=1,self%num_ciliat
-      cop_pref(cb)=exp(-self%sel_cop_cil*(self%Lz_star(numberofzoos-1)+self%Lz_star(numberofzoos)-Lz_tmp(cb))**2)
-    end do
+      !! Copepod preference for ciliates
+      !! Ciliates are divided to two size class:small:3 mum logeESD, large:4.5 mum logeESD
+      do cb=1,self%num_ciliat
+        cop_pref(cb)=exp(-self%sel_cop_cil*(self%Lz_star(numberofzoos-1)+self%Lz_star(numberofzoos)-Lz_tmp(cb))**2)
+      end do
 
-    !! ciliates concentration is divided to get each size class biomass:50% total cilit:small,
-    !! 50% total ciliat:large
+      !! ciliates concentration is divided to get each size class biomass:50% total cilit:small,
+      !! 50% total ciliat:large
 
-    if (self%co2_low .eqv. .true.) then
-      _GET_(self%id_cil_l,cil_l)
-      _GET_(self%id_copepod_l,copepod_l)
-      !! Zoo = small ciliates, large ciliates, copepods
-      Zoo=(/0.0*cil_l/2.0_rk/12.0_rk,cil_l/12.0_rk,csr*4.0_rk*copepod_l*10.d-4/)
-      !! heterotrophe Flagellaten (Test)
-      !Zoo=(/Phy(6)/3.0_rk,cil_l/12.0_rk,csr*4.0_rk*copepod_l*10.d-4/)
-    else
-      _GET_(self%id_cil_h,cil_h)
-      _GET_(self%id_copepod_h,copepod_h)
-      Zoo=(/0.0*cil_h/2.0_rk/12.0_rk,cil_h/12.0_rk,csr*4.0_rk*copepod_h*10.d-4/)
-      ! heterotrophe Flagellaten (Test)
-      ! Zoo=(/Phy(6)/3.0_rk,cil_h/12.0_rk,csr*4.0_rk*copepod_h*10.d-4/)
+      if (self%co2_low .eqv. .true.) then
+        _GET_(self%id_cil_l,cil_l)
+        _GET_(self%id_copepod_l,copepod_l)
+        !! Zoo = small ciliates, large ciliates, copepods
+        Zoo=(/0.0*cil_l/2.0_rk/12.0_rk,cil_l/12.0_rk,csr*4.0_rk*copepod_l*10.d-4/)
+        !! heterotrophe Flagellaten (Test)
+        !Zoo=(/Phy(6)/3.0_rk,cil_l/12.0_rk,csr*4.0_rk*copepod_l*10.d-4/)
+      else
+        _GET_(self%id_cil_h,cil_h)
+        _GET_(self%id_copepod_h,copepod_h)
+        Zoo=(/0.0*cil_h/2.0_rk/12.0_rk,cil_h/12.0_rk,csr*4.0_rk*copepod_h*10.d-4/)
+        ! heterotrophe Flagellaten (Test)
+        ! Zoo=(/Phy(6)/3.0_rk,cil_h/12.0_rk,csr*4.0_rk*copepod_h*10.d-4/)
+      end if
     end if
-  end if
 
-  !! End of kristineberg experiments part---------------------------------------
+    !! End of kristineberg experiments part---------------------------------------
 
-  _LOOP_BEGIN_
+    _LOOP_BEGIN_
 
-  !! Obtain concentrations
-  do ib=1,self%phyto_num
-    _GET_(self%id_Phy(ib),Phy(ib))
-    _GET_(self%id_Q_N(ib),Q_N(ib))
-    _GET_(self%id_Q_P(ib),Q_P(ib))
-  end do
+    !! Obtain concentrations
+    do ib=1,self%phyto_num
+      _GET_(self%id_Phy(ib),Phy(ib))
+      _GET_(self%id_Q_N(ib),Q_N(ib))
+      _GET_(self%id_Q_P(ib),Q_P(ib))
+    end do
 
-  _GET_(self%id_D_P,D_P)
-  _GET_(self%id_D_N,D_N)
-  _GET_(self%id_N,N)
-  _GET_(self%id_P,P)
+    _GET_(self%id_D_P,D_P)
+    _GET_(self%id_D_N,D_N)
+    _GET_(self%id_N,N)
+    _GET_(self%id_P,P)
 
-  !! Declaring if forcing would be calculated, if not returns the values declared as default.
-  if(self%T_forc .eqv. .true.) call F_T(self,deepwTemp,T_forcing)
-  if(self%co2_forc .eqv. .true.) call F_Co2sr(self,pCO2,f_co2)
-  if(self%PAR_forc .eqv. .true.) call f_parsr(self,Phy,Q_N,f_co2,T_forcing,par,mixl,F_par)
-  !!--------------------------
+    !! Declaring if forcing would be calculated, if not, it returns the values declared as default.
+    if(self%T_forc .eqv. .true.) call F_T(self,deepwTemp,T_forcing)
+    if(self%co2_forc .eqv. .true.) call F_Co2sr(self,pCO2,f_co2)
+    if(self%PAR_forc .eqv. .true.) call f_parsr(self,Phy,Q_N,f_co2,T_forcing,par,mixl,F_par)
 
-  !! Aggregation rate
-  call aggr_rate(self,Phy,Q_N,D_N,aggr)
+    !!--------------------------
 
-  !! Phytoplankton growth rate
-  call Phy_growth_rate(self,Q_N,Q_P,T_forcing,f_co2,F_par,P_growth_rate)
+    !! Aggregation rate
+    call aggr_rate(self,Phy,Q_N,D_N,aggr)
 
-  !! Nutrient uptake rate by phytoplankton
-  call N_uptake(self,N,Q_N,T_forcing,par,uptake_rate_N)
-  call P_uptake(self,P,Q_P,T_forcing,par,uptake_rate_P)
+    !! Phytoplankton growth rate
+    call Phy_growth_rate(self,Q_N,Q_P,T_forcing,f_co2,F_par,P_growth_rate)
 
-  !! Phytoplankton respiration
-  call Respiration(self,uptake_rate_N,R_N)
+    _GET_GLOBAL_ (self%id_doy,doy) !Get day of year
 
-  !! Community mean cell size
-  call mean_cell_size(self,Phy,Mean)
+    if(doy /= old_doy) then
+      old_doy = doy+1
+      rdn = 0.01_rk+1.990_rk*(/ (rand(1), i=1,self%phyto_num) /) ! random     
+      P_growth_rate = rdn*P_growth_rate
+      write(*,*) mixl
+    end if
 
-  !! Grazing forcing
-  if (self%graz_forc .eqv. .true.) then
-   call grazing_forcing(self,Phy,T_forcing,Mean,zoo_pref,cop_pref,Zoo,grazing_forc,Lz_tmp,I_max)
-  else
-    call dummy_grazing(self,Phy,grazing_forc)
-  endif
+    
 
-  !! Sinking rate
-  call sink_rate(self,Q_N,Q_P,mixl,sinkr)
+    !! Nutrient uptake rate by phytoplankton
+    call N_uptake(self,N,Q_N,T_forcing,par,uptake_rate_N)
+    call P_uptake(self,P,Q_P,T_forcing,par,uptake_rate_P)
 
-  !! Phytoplankton relative growth rate
-  call Rel_growth_rate_sr(self,Phy,aggr,P_growth_rate,grazing_forc,R_N,sinkr,rel_growthr)
+    !! Phytoplankton respiration
+    call Respiration(self,uptake_rate_N,R_N)
 
-  !! Differential equations ----------------------------------------------------
-  do ib=1,self%phyto_num
-    dPhy_dt(ib) = rel_growthr(ib) * Phy(ib)
-    !if(self%log_ESD(ib)<1.6) dPhy_dt(ib)=dPhy_dt(ib)-0.04*Phy(ib)
-    dQ_N_dt(ib) = uptake_rate_N(ib) - (P_growth_rate(ib)-R_N(ib)) * Q_N(ib)
-    dQ_P_dt(ib) = uptake_rate_P(ib) - (P_growth_rate(ib)-R_N(ib)) * Q_P(ib)
-  end do
+    !! Community mean cell size
+    call mean_cell_size(self,Phy,Mean)
 
-  !Heterotrophe Flagellaten
-  !dPhy_dt(6)=Phy(6)*(grazing_forc(1)+grazing_forc(2)+grazing_forc(3)+grazing_forc(4)+grazing_forc(5))/3.0+ dPhy_dt(6)*2/3.0
-  call dN_dt(self,uptake_rate_N, Phy, D_N,grazing_forc,Q_N,T_forcing,N,dN_dt_t)
-  call dP_dt(self,uptake_rate_P, Phy, D_P,grazing_forc,Q_P,T_forcing,P,dP_dt_t)
+    !! Grazing forcing
+    if (self%graz_forc .eqv. .true.) then
+     call grazing_forcing(self,Phy,T_forcing,Mean,zoo_pref,cop_pref,Zoo,grazing_forc,Lz_tmp,I_max)
+    else
+      call dummy_grazing(self,Phy,grazing_forc)
+    endif
 
-  call dD_N_dt(self, Phy, Q_N, D_N,aggr,T_forcing,mixl,grazing_forc,dD_N_dt_t)
-  call dD_P_dt(self, Phy, Q_P, D_P,aggr,T_forcing,mixl,grazing_forc,dD_P_dt_t)
-  !dD_P_dt_t = dD_P_dt(self, Phy, Q_P, D_P,aggr,T_forcing,mixl,grazing_forc)
-  !if(isnan(Phy(1))) stop
-  !-------------------------
+    !! Sinking rate
+    call sink_rate(self,Q_N,Q_P,mixl,sinkr)
 
-  !! Send rates of change to FABM.
-  do ib=1,self%phyto_num
-    _SET_ODE_(self%id_Phy(ib),dPhy_dt(ib)/secs_pr_day)
-    _SET_ODE_(self%id_Q_N(ib),dQ_N_dt(ib)/secs_pr_day)
-    _SET_ODE_(self%id_Q_P(ib),dQ_P_dt(ib)/secs_pr_day)
-  end do
+    !! Phytoplankton relative growth rate
+    call Rel_growth_rate_sr(self,Phy,aggr,P_growth_rate,grazing_forc,R_N,sinkr,rel_growthr)
 
-  _SET_ODE_(self%id_D_P,dD_P_dt_t/secs_pr_day)
-  _SET_ODE_(self%id_D_N,dD_N_dt_t/secs_pr_day)
-  _SET_ODE_(self%id_N,dN_dt_t/secs_pr_day)
-  _SET_ODE_(self%id_P,dP_dt_t/secs_pr_day)
+    !! Differential equations ----------------------------------------------------
+    dPhy_dt = rel_growthr*Phy
+    dQ_N_dt = uptake_rate_N - (P_growth_rate-R_N)*Q_N
+    dQ_P_dt = uptake_rate_P - (P_growth_rate-R_N)*Q_P
 
-  !! Send the value of diagnostic variables to FABM.
-  _SET_DIAGNOSTIC_(self%id_chl_a,chl_a(self,Phy,Q_N,par))
-  _SET_DIAGNOSTIC_(self%id_POC,self%POC_initial+sum(Phy(:))) !TODO
-  _SET_DIAGNOSTIC_(self%id_PON,sum(Q_N(:))+D_N)		!TODO
-  _SET_DIAGNOSTIC_(self%id_mean_cell_size,Mean)
-  _SET_DIAGNOSTIC_(self%id_size_diversity,size_diversity(self,Phy,Mean))
+    !Heterotrophe Flagellaten
+    !dPhy_dt(6)=Phy(6)*(grazing_forc(1)+grazing_forc(2)+grazing_forc(3)+grazing_forc(4)+grazing_forc(5))/3.0+ dPhy_dt(6)*2/3.0
+    call dN_dt(self,uptake_rate_N, Phy, D_N,grazing_forc,Q_N,T_forcing,N,dN_dt_t)
+    call dP_dt(self,uptake_rate_P, Phy, D_P,grazing_forc,Q_P,T_forcing,P,dP_dt_t)
 
-  do ib=1,self%phyto_num
-    _SET_DIAGNOSTIC_(self%id_fPAR(ib),F_par(ib))
-     !end do
-     !do ib=1,self%phyto_num
-       _SET_DIAGNOSTIC_(self%id_fCO2(ib),f_co2(ib))
-     !end do
-     !do ib=1,self%phyto_num
-       _SET_DIAGNOSTIC_(self%id_grazing(ib),grazing_forc(ib)/Phy(ib))
-     !end do
-     ! Write(*,*)grazing_forc
-     _SET_DIAGNOSTIC_(self%id_FTPhy,T_forcing(1))
-     _SET_DIAGNOSTIC_(self%id_FTZoo,T_forcing(2))
-     !do ib=1,self%phyto_num
-       _SET_DIAGNOSTIC_(self%id_uptake_N(ib),uptake_rate_N(ib))
-     !end do
-     !do ib=1,self%phyto_num
-       _SET_DIAGNOSTIC_(self%id_uptake_P(ib),uptake_rate_P(ib))
-     end do
-     do ib=1,self%zoo_num
-       _SET_DIAGNOSTIC_(self%id_I_max(ib),I_max(ib))
-     end do
-     do ib=1,self%phyto_num
-       _SET_DIAGNOSTIC_(self%id_growth(ib),P_growth_rate(ib))
-     end do
-     _SET_DIAGNOSTIC_(self%id_total_growth,sum(P_growth_rate(:)))
-     _SET_DIAGNOSTIC_(self%id_total_respiration,-sum(R_N(:)))
-     _SET_DIAGNOSTIC_(self%id_total_sinking,-sum(sinkr(:)))
-     _SET_DIAGNOSTIC_(self%id_aggregation,-aggr)
-     _SET_DIAGNOSTIC_(self%id_total_grazing,-sum(grazing_forc(:)/(0.0001+Phy(:))))
-     do ib=1,self%phyto_num
-       _SET_DIAGNOSTIC_(self%id_sizespec(ib),Phy(ib))!/sum(Phy(:)))
-     end do
+    call dD_N_dt(self, Phy, Q_N, D_N,aggr,T_forcing,mixl,grazing_forc,dD_N_dt_t)
+    call dD_P_dt(self, Phy, Q_P, D_P,aggr,T_forcing,mixl,grazing_forc,dD_P_dt_t)
+    !if(isnan(Phy(1))) stop
+    !-------------------------
+
+    !! Send rates of change to FABM.
+    do ib=1,self%phyto_num
+      _SET_ODE_(self%id_Phy(ib),dPhy_dt(ib)/secs_pr_day)
+      _SET_ODE_(self%id_Q_N(ib),dQ_N_dt(ib)/secs_pr_day)
+      _SET_ODE_(self%id_Q_P(ib),dQ_P_dt(ib)/secs_pr_day)
+    end do
+
+    _SET_ODE_(self%id_D_P,dD_P_dt_t/secs_pr_day)
+    _SET_ODE_(self%id_D_N,dD_N_dt_t/secs_pr_day)
+    _SET_ODE_(self%id_N,dN_dt_t/secs_pr_day)
+    _SET_ODE_(self%id_P,dP_dt_t/secs_pr_day)
+
+    !! Send the value of diagnostic variables to FABM.
+    _SET_DIAGNOSTIC_(self%id_chl_a,chl_a(self,Phy,Q_N,par))
+    _SET_DIAGNOSTIC_(self%id_POC,self%POC_initial+sum(Phy(:))) !TODO
+    _SET_DIAGNOSTIC_(self%id_PON,sum(Q_N(:))+D_N)		!TODO
+    _SET_DIAGNOSTIC_(self%id_mean_cell_size,Mean)
+    _SET_DIAGNOSTIC_(self%id_size_diversity,size_diversity(self,Phy,Mean))
+
+    do ib=1,self%phyto_num
+      _SET_DIAGNOSTIC_(self%id_fPAR(ib),F_par(ib))
+      _SET_DIAGNOSTIC_(self%id_fCO2(ib),f_co2(ib))
+      _SET_DIAGNOSTIC_(self%id_grazing(ib),grazing_forc(ib)/Phy(ib))
+      _SET_DIAGNOSTIC_(self%id_uptake_N(ib),uptake_rate_N(ib))
+      _SET_DIAGNOSTIC_(self%id_uptake_P(ib),uptake_rate_P(ib))
+      _SET_DIAGNOSTIC_(self%id_growth(ib),P_growth_rate(ib))
+      _SET_DIAGNOSTIC_(self%id_sizespec(ib),Phy(ib))!/sum(Phy(:)))
+    end do
+
+    do ib=1,self%zoo_num
+      _SET_DIAGNOSTIC_(self%id_I_max(ib),I_max(ib))
+    end do
+
+    _SET_DIAGNOSTIC_(self%id_FTPhy,T_forcing(1))
+    _SET_DIAGNOSTIC_(self%id_FTZoo,T_forcing(2))
+    _SET_DIAGNOSTIC_(self%id_total_growth,sum(P_growth_rate(:)))
+    _SET_DIAGNOSTIC_(self%id_total_respiration,-sum(R_N(:)))
+    _SET_DIAGNOSTIC_(self%id_total_sinking,-sum(sinkr(:)))
+    _SET_DIAGNOSTIC_(self%id_aggregation,-aggr)
+    _SET_DIAGNOSTIC_(self%id_total_grazing,-sum(grazing_forc(:)/(0.0001+Phy(:))))
+
     _LOOP_END_
+
   end subroutine do
+
   include 'mspec_functions.F90'
   include 'mspec_zoo.F90'
+
 end module

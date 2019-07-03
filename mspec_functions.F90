@@ -134,8 +134,9 @@ subroutine f_parsr(self,Phy,Q_N,f_co2,F_T,par,mixl,f_par)
 
   k = self%kbg + sum(Q_N*Phy)*self%k_phyN
   par_w = par/(mixl*k)*(1.0_rk-exp(-1.0_rk*k*mixl)) ! par_w: Average light intensity within mixed layer depth,
-  f_par = 1.0_rk-exp(-(self%a_par*par_w*Q_N)/(self%mumax*f_co2*F_T(1))) !OG
 
+  f_par = 1.0_rk-exp(-(self%a_par*par_w)/(self%mumax*f_co2*F_T(1)))
+ 
   return
 end subroutine f_parsr
 
@@ -237,7 +238,7 @@ subroutine P_uptake(self,P, Q_P,F_T,par,uptake_rate_P)
   if (par>=0.0_rk) then !No uptake during night
       nom_P = self%vP_max*self%P_affin*P !OG
       dom_P = self%vP_max+self%P_affin*P !OG
-      uptake_rate_P = (nom_P/dom_P)*sqrt(F_T(1))
+      uptake_rate_P = (nom_P/dom_P)*sqrt(F_T(1))*q
   end if
 
   return
