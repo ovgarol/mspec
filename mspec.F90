@@ -4,6 +4,7 @@
 !! Cleaned and recoded by Ovidio Garcia (ovidio.garcia@hzg.de)
 !! from original source from Kai Wirtz copy 05.2019
 !!------------------------------------------------------------------------------
+
 module hzg_mspec
   use fabm_types
   implicit none
@@ -431,7 +432,8 @@ module hzg_mspec
     call self%get_parameter(self%a_affin_N,	'a_affin_N',	default=a_affin_N)
     call self%get_parameter(self%b_affin_P,	'b_affin_P',	default=b_affin_P)
     call self%get_parameter(self%a_affin_P,	'a_affin_P',	default=a_affin_P)
-     !Calculate the initial Phytoplankton conentration
+
+     !Calculate the initial Phytoplankton concentration
     pars = 0.0_rk
     call ecophys_para(self,pars)
 
@@ -439,30 +441,34 @@ module hzg_mspec
       call self%get_parameter(self%pars(ib), 'pars'//trim(int2char(ib)), default=pars(ib))
       !Write(*,*)'pars'//trim(int2char(ib)),self%pars(ib)
     end do
+    
     open(namlst,file='mspec_init.nml',status='old')
     read(namlst,nml=mspec_init,err=90,end=99)
     !TODO: Why, explain!?
 
     do ib=1,phyto_num
-      Phyto0=1.0
-      !Phyto0(ib)=exp(-((log_ESD(ib)-Phyto0_mean)**2)/(2*(Phyto0_sigma)**2))+exp(-((log_ESD(ib)-3.5)**2)/(2*(0.8)**2))*0.03
-      !Phyto0(ib)=0.50_rk*exp(-0.1_rk*(log_ESD(ib)-5.2_rk)**2.0_rk)+0.25_rk*exp(-0.1_rk*(log_ESD(ib)-3.5_rk)**2.0_rk)
+      !Phyto0=1.0
+      !Phyto0(ib) = exp(-((log_ESD(ib)-Phyto0_mean)**2)/(2*(Phyto0_sigma)**2))+exp(-((log_ESD(ib)-3.5)**2)/(2*(0.8)**2))*0.03
+      Phyto0(ib) = 0.50_rk*exp(-0.1_rk*(log_ESD(ib)-5.2_rk)**2.0_rk)+0.25_rk*exp(-0.1_rk*(log_ESD(ib)-3.5_rk)**2.0_rk)
     end do
 
-    Phy_initial = tot_phyc0*Phyto0/sum(Phyto0)
+    call make_phyto_allometries(self) !OG
 
-    !!write(*,*) Phy_initial(1)
+
+
+    !write(*,*) Q_N_initial
+
+    !Phy_initial = tot_phyc0*Phyto0/sum(Phyto0)
+
+    write(*,*) Phy_initial(1)
 
     do ib=1,phyto_num
-      call bgc_parameters(self,log_ESD(ib),tmp)
-      Q_N_initial(ib) = tmp(3)
-      Q_P_initial(ib) = tmp(8)
+      Q_N_initial(ib) = self%QN_max(ib)
+      Q_P_initial(ib) = self%QP_max(ib)
+    !  call bgc_parameters(self,log_ESD(ib),tmp)
+    !  Q_N_initial(ib) = tmp(3)
+    !  Q_P_initial(ib) = tmp(8)
     end do
-
-    !Q_N_initial = self%QN_max
-    !Q_P_initial = self%QP_max
-
-    write(*,*) Q_N_initial
 
     do ib=1,phyto_num
       call self%get_parameter(self%Phy_initial(ib) ,'Phy_initial'//trim(int2char(ib)), default=Phy_initial(ib))
@@ -630,7 +636,6 @@ module hzg_mspec
     call self%register_dependency(self%id_copepod_l,type_bulk_standard_variable('copepod_l','-'))
     call self%register_dependency(self%id_copepod_h,type_bulk_standard_variable('copepod_h','-'))
 
-    call make_phyto_allometries(self) !OG
 
 
     return
@@ -795,12 +800,12 @@ module hzg_mspec
 
     if(doy /= old_doy) then
       old_doy = doy+1
-      rdn = 0.01_rk+1.990_rk*(/ (rand(1), i=1,self%phyto_num) /) ! random     
+      rdn = 0.01_rk+1.990_rk*(/ (rand(1), i=1,self%phyto_num) /) ! random
       P_growth_rate = rdn*P_growth_rate
-      write(*,*) mixl
+      !write(*,*) mixl
     end if
 
-    
+
 
     !! Nutrient uptake rate by phytoplankton
     call N_uptake(self,N,Q_N,T_forcing,par,uptake_rate_N)

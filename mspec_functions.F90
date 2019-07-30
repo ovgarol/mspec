@@ -239,7 +239,7 @@ subroutine P_uptake(self,P, Q_P,F_T,par,uptake_rate_P)
   if (par>=0.0_rk) then !No uptake during night
       nom_P = self%vP_max*self%P_affin*P !OG
       dom_P = self%vP_max+self%P_affin*P !OG
-      q = (self%PN_max-P_N)/(self%PN_max-self%PN_min)
+      q = (self%QP_max-Q_P)/(self%QP_max-self%QP_min)
       where(q .le. 0.0_rk) q = 0.0_rk
       uptake_rate_P = (nom_P/dom_P)*sqrt(F_T(1))*q
   end if
